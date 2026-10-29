@@ -54,6 +54,7 @@ export type FilterType =
     | "crt"
     | "registry"
     | "mockService"
+    | "mockServiceEndpoint"
     | "dssQuery"
     | "dssDataSource"
     | "configurable"
@@ -278,6 +279,8 @@ export const Keylookup = (props: IKeylookup) => {
             resourceType = filterType.map((type) => {
                 return { type: type }
             });
+        } else if (filterType === "mockServiceEndpoint") {
+            resourceType = "endpoint";
         } else {
             resourceType = filterType;
         }
@@ -296,6 +299,22 @@ export const Keylookup = (props: IKeylookup) => {
                 const displayType = filterType === "bindToInbound" ? "inbound-endpoint" : resource.type;
                 const item = { key: resource.name, item: getItemComponent(resource.name, displayType), path: resource.absolutePath };
                 if (resource.name === getValue(value)) {
+                    initialItem = item;
+                    return;
+                }
+                workspaceItems.push(item);
+            });
+        }
+        if (filterType === "mockServiceEndpoint") {
+            // HTTP connector connections are deployed as endpoints, so they can be mocked as well
+            const documentUri = path || (await rpcClient.getVisualizerState()).projectUri;
+            const httpConnections = await rpcClient.getMiDiagramRpcClient().getConnectorConnections({
+                documentUri,
+                connectorName: "http"
+            });
+            httpConnections?.connections?.forEach((connection) => {
+                const item = { key: connection.name, item: getItemComponent(connection.name, "http connection"), path: connection.path };
+                if (connection.name === getValue(value)) {
                     initialItem = item;
                     return;
                 }

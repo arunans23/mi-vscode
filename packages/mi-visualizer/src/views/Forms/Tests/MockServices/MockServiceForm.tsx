@@ -41,6 +41,9 @@ export interface MockServiceFormProps {
     onSubmit?: (values: any) => void;
 }
 
+// Endpoints generated at runtime for HTTP connector connections are named <connection name> + this suffix
+const HTTP_CONNECTION_ENDPOINT_SUFFIX = "_INTERNAL_ENDPOINT_REFERENCE";
+
 const cardStyle = {
     display: "block",
     margin: "15px 0 0 0",
@@ -85,6 +88,7 @@ export function MockServiceForm(props: MockServiceFormProps) {
     const [mockResources, setMockResources] = useState<MockResourceEntry[]>([]);
     const [showAddMockResource, setShowAddMockResource] = useState(false);
     const [currentMockResource, setCurrentMockResource] = useState<MockResourceEntry | undefined>(undefined);
+    const [httpConnections, setHttpConnections] = useState<string[]>([]);
 
     const isUpdate = !!props.stNode;
     const mockService = props.stNode;
@@ -118,6 +122,14 @@ export function MockServiceForm(props: MockServiceFormProps) {
             const mockServicesNames = mockServices.mockServices.map((mockService: any) => mockService.name);
             const allMockServices = mockServicesNames.concat(availableMockServices).filter((value) => value !== fileName);
             setAvailableMockServices(allMockServices);
+
+            const documentUri = filePath || (await rpcClient.getVisualizerState()).projectUri;
+            const connectionsRes = await rpcClient.getMiDiagramRpcClient().getConnectorConnections({
+                documentUri,
+                connectorName: "http"
+            });
+            const httpConnectionNames = connectionsRes?.connections?.map((connection) => connection.name) ?? [];
+            setHttpConnections(httpConnectionNames);
 
             if (mockService) {
                 if (mockService?.resources?.resources) {
@@ -160,7 +172,7 @@ export function MockServiceForm(props: MockServiceFormProps) {
                 }
                 reset({
                     name: fileName,
-                    endpointName: mockService.serviceName?.textNode,
+                    endpointName: getEndpointDisplayName(mockService.serviceName?.textNode, httpConnectionNames),
                     servicePort: parseInt(mockService?.port?.textNode || '9090'),
                     serviceContext: mockService?.context?.textNode
                 });
@@ -176,6 +188,16 @@ export function MockServiceForm(props: MockServiceFormProps) {
             setIsLoaded(true);
         })();
     }, [props.filePath, mockService]);
+
+    const getEndpointDisplayName = (serviceName: string | undefined, connections: string[]) => {
+        if (serviceName?.endsWith(HTTP_CONNECTION_ENDPOINT_SUFFIX)) {
+            const connectionName = serviceName.slice(0, -HTTP_CONNECTION_ENDPOINT_SUFFIX.length);
+            if (connections.includes(connectionName)) {
+                return connectionName;
+            }
+        }
+        return serviceName;
+    }
 
     const handleGoBack = () => {
         if (props.onGoBack) {
@@ -236,7 +258,10 @@ export function MockServiceForm(props: MockServiceFormProps) {
                 response
             }
         });
-        const xml = getMockServiceXML(values);
+        const endpointName = httpConnections.includes(values.endpointName)
+            ? values.endpointName + HTTP_CONNECTION_ENDPOINT_SUFFIX
+            : values.endpointName;
+        const xml = getMockServiceXML({ ...values, endpointName });
         rpcClient.getMiDiagramRpcClient().updateMockService({ path: props.filePath, content: xml, name: values.name }).then((resp: UpdateTestSuiteResponse) => {
             if (props.onSubmit) {
                 values.filePath = resp.path;
@@ -286,7 +311,7 @@ export function MockServiceForm(props: MockServiceFormProps) {
                     control={control as any}
                     label="Endpoint"
                     name="endpointName"
-                    filterType="endpoint"
+                    filterType="mockServiceEndpoint"
                     path={props.filePath}
                     required
                     errorMsg={errors.endpointName?.message.toString()}
